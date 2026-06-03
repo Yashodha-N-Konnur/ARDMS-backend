@@ -1,0 +1,43 @@
+---
+# =====================================================
+# ARDMS - Master Ansible Playbook
+# Orchestrates all roles for full server setup
+# =====================================================
+- name: ARDMS Full Server Setup
+  hosts: ardms_servers
+  become: yes
+  gather_facts: yes
+
+  pre_tasks:
+    - name: Print server information
+      debug:
+        msg: |
+          Setting up ARDMS on: {{ inventory_hostname }}
+          OS: {{ ansible_distribution }} {{ ansible_distribution_version }}
+          IP: {{ ansible_default_ipv4.address }}
+
+  roles:
+    - role: common
+      tags: [common, base]
+    - role: java
+      tags: [java]
+    - role: docker
+      tags: [docker]
+    - role: app
+      tags: [app, deploy]
+
+  post_tasks:
+    - name: Verify application is running
+      uri:
+        url: "http://localhost:8080/api/actuator/health"
+        method: GET
+        return_content: yes
+        status_code: 200
+      register: health_check
+      retries: 10
+      delay: 15
+      until: health_check.status == 200
+
+    - name: Application health check result
+      debug:
+        msg: "ARDMS is running and healthy: {{ health_check.json.status }}"

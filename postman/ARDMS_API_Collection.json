@@ -1,0 +1,279 @@
+{
+  "info": {
+    "_postman_id": "ardms-api-collection-v1",
+    "name": "ARDMS - Automated Release & Deployment Management System",
+    "description": "Complete API collection for ARDMS. Set {{base_url}} to http://localhost:8080/api",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:8080/api" },
+    { "key": "access_token", "value": "" },
+    { "key": "refresh_token", "value": "" },
+    { "key": "release_id", "value": "1" },
+    { "key": "deployment_id", "value": "1" },
+    { "key": "environment_id", "value": "1" }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+  },
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "var json = pm.response.json();",
+                "if (json.success) {",
+                "    pm.collectionVariables.set('access_token', json.data.accessToken);",
+                "    pm.collectionVariables.set('refresh_token', json.data.refreshToken);",
+                "    pm.test('Login successful', () => pm.response.to.have.status(200));",
+                "}"
+              ]
+            }
+          }],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"usernameOrEmail\": \"admin\",\n  \"password\": \"Admin@1234\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth", "login"] }
+          }
+        },
+        {
+          "name": "Register User",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"newdev\",\n  \"email\": \"newdev@ardms.com\",\n  \"password\": \"Dev@12345\",\n  \"firstName\": \"New\",\n  \"lastName\": \"Developer\",\n  \"roles\": [\"DEVELOPER\"]\n}"
+            },
+            "url": { "raw": "{{base_url}}/auth/register", "host": ["{{base_url}}"], "path": ["auth", "register"] }
+          }
+        },
+        {
+          "name": "Refresh Token",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refresh_token}}\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/auth/refresh-token", "host": ["{{base_url}}"], "path": ["auth", "refresh-token"] }
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{base_url}}/auth/logout", "host": ["{{base_url}}"], "path": ["auth", "logout"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Releases",
+      "item": [
+        {
+          "name": "Create Release",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"releaseName\": \"Q3 Feature Release\",\n  \"version\": \"2.0.0\",\n  \"description\": \"Major Q3 feature set\",\n  \"releaseType\": \"MAJOR\",\n  \"plannedDate\": \"2025-09-01T10:00:00\",\n  \"gitBranch\": \"release/2.0.0\",\n  \"gitTag\": \"v2.0.0\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/releases", "host": ["{{base_url}}"], "path": ["releases"] }
+          }
+        },
+        {
+          "name": "Get All Releases",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/releases?page=0&size=10&sortBy=createdAt&sortDir=desc",
+              "host": ["{{base_url}}"], "path": ["releases"],
+              "query": [
+                { "key": "page", "value": "0" }, { "key": "size", "value": "10" },
+                { "key": "sortBy", "value": "createdAt" }, { "key": "sortDir", "value": "desc" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Release by ID",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/releases/{{release_id}}", "host": ["{{base_url}}"], "path": ["releases", "{{release_id}}"] }
+          }
+        },
+        {
+          "name": "Get Releases by Status (DEPLOYED)",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/releases/status/DEPLOYED", "host": ["{{base_url}}"], "path": ["releases", "status", "DEPLOYED"] }
+          }
+        },
+        {
+          "name": "Update Release Status",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"status\": \"PLANNED\"\n}" },
+            "url": { "raw": "{{base_url}}/releases/{{release_id}}/status", "host": ["{{base_url}}"], "path": ["releases", "{{release_id}}", "status"] }
+          }
+        },
+        {
+          "name": "Search Releases",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/releases/search?query=ARDMS", "host": ["{{base_url}}"], "path": ["releases", "search"], "query": [{ "key": "query", "value": "ARDMS" }] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Deployments",
+      "item": [
+        {
+          "name": "Create Deployment",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"releaseId\": {{release_id}},\n  \"environmentId\": 2,\n  \"deploymentType\": \"FULL\",\n  \"jenkinsBuildNumber\": \"42\",\n  \"jenkinsBuildUrl\": \"http://jenkins.internal/job/ardms/42\",\n  \"dockerImageTag\": \"ardms/ardms-backend:1.0.0\",\n  \"deploymentNotes\": \"Automated deployment from Jenkins\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/deployments", "host": ["{{base_url}}"], "path": ["deployments"] }
+          }
+        },
+        {
+          "name": "Get All Deployments",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/deployments?page=0&size=10", "host": ["{{base_url}}"], "path": ["deployments"], "query": [{ "key": "page", "value": "0" }, { "key": "size", "value": "10" }] }
+          }
+        },
+        {
+          "name": "Get Deployment by ID",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/deployments/{{deployment_id}}", "host": ["{{base_url}}"], "path": ["deployments", "{{deployment_id}}"] }
+          }
+        },
+        {
+          "name": "Update Deployment Status (SUCCESS)",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"status\": \"SUCCESS\"\n}" },
+            "url": { "raw": "{{base_url}}/deployments/{{deployment_id}}/status", "host": ["{{base_url}}"], "path": ["deployments", "{{deployment_id}}", "status"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Rollbacks",
+      "item": [
+        {
+          "name": "Initiate Rollback",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"deploymentId\": {{deployment_id}},\n  \"reason\": \"Critical bug found in production - memory leak in release 2.0.0\",\n  \"notes\": \"Reverting to previous stable version\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/rollbacks", "host": ["{{base_url}}"], "path": ["rollbacks"] }
+          }
+        },
+        {
+          "name": "Get All Rollbacks",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/rollbacks", "host": ["{{base_url}}"], "path": ["rollbacks"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Environments",
+      "item": [
+        {
+          "name": "Get Active Environments",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/environments/active", "host": ["{{base_url}}"], "path": ["environments", "active"] }
+          }
+        },
+        {
+          "name": "Create Environment",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"UAT\",\n  \"description\": \"User Acceptance Testing\",\n  \"envType\": \"QA\",\n  \"baseUrl\": \"http://uat.ardms.internal\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/environments", "host": ["{{base_url}}"], "path": ["environments"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Dashboard",
+      "item": [
+        {
+          "name": "Get Dashboard Stats",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/dashboard/stats", "host": ["{{base_url}}"], "path": ["dashboard", "stats"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Users",
+      "item": [
+        {
+          "name": "Get Current User",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/users/me", "host": ["{{base_url}}"], "path": ["users", "me"] }
+          }
+        },
+        {
+          "name": "Get All Users (Admin)",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/users", "host": ["{{base_url}}"], "path": ["users"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Actuator Health",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/actuator/health", "host": ["{{base_url}}"], "path": ["actuator", "health"] }
+          }
+        }
+      ]
+    }
+  ]
+}

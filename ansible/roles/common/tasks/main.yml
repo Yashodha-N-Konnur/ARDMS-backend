@@ -1,0 +1,64 @@
+---
+- name: Update package cache
+  yum:
+    update_cache: yes
+  when: ansible_os_family == "RedHat"
+
+- name: Install common packages
+  package:
+    name:
+      - git
+      - curl
+      - wget
+      - unzip
+      - vim
+      - htop
+      - net-tools
+      - firewalld
+    state: present
+
+- name: Start and enable firewalld
+  service:
+    name: firewalld
+    state: started
+    enabled: yes
+
+- name: Allow application port through firewall
+  firewalld:
+    port: "{{ ardms_app_port }}/tcp"
+    permanent: yes
+    state: enabled
+    immediate: yes
+
+- name: Allow SSH through firewall
+  firewalld:
+    service: ssh
+    permanent: yes
+    state: enabled
+    immediate: yes
+
+- name: Set timezone to UTC
+  timezone:
+    name: UTC
+
+- name: Create ardms application directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: ec2-user
+    group: ec2-user
+    mode: '0755'
+  loop:
+    - "{{ ardms_app_dir }}"
+    - "{{ ardms_logs_dir }}"
+    - "{{ ardms_config_dir }}"
+
+- name: Set system limits for application
+  pam_limits:
+    domain: "ec2-user"
+    limit_type: "{{ item.type }}"
+    limit_item: "{{ item.item }}"
+    value: "{{ item.value }}"
+  loop:
+    - { type: soft, item: nofile, value: 65536 }
+    - { type: hard, item: nofile, value: 65536 }

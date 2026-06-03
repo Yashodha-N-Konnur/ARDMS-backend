@@ -1,0 +1,50 @@
+---
+# =====================================================
+# ARDMS - Rollback Playbook
+# Reverts to previous Docker image version
+# =====================================================
+- name: Rollback ARDMS Application
+  hosts: ardms_servers
+  become: yes
+  gather_facts: yes
+
+  vars:
+    rollback_version: "{{ lookup('env', 'ROLLBACK_VERSION') | mandatory }}"
+
+  tasks:
+    - name: Pull rollback image
+      docker_image:
+        name: "{{ ardms_docker_image }}:{{ rollback_version }}"
+        source: pull
+
+    - name: Stop current container
+      docker_container:
+        name: ardms-backend
+        state: stopped
+
+    - name: Start rollback container
+      docker_container:
+        name: ardms-backend
+        image: "{{ ardms_docker_image }}:{{ rollback_version }}"
+        state: started
+        restart_policy: unless-stopped
+        ports:
+          - "8080:8080"
+        env:
+          SPRING_PROFILES_ACTIVE: prod
+          DB_URL: "{{ db_url }}"
+          DB_USERNAME: "{{ db_username }}"
+          DB_PASSWORD: "{{ db_password }}"
+          JWT_SECRET: "{{ jwt_secret }}"
+
+    - name: Verify rollback
+      uri:
+        url: "http://localhost:8080/api/actuator/health"
+        method: GET
+        status_code: 200
+      retries: 10
+      delay: 10
+
+    - name: Rollback complete
+      debug:
+        msg: "Rolled back to version {{ rollback_version }} successfully"

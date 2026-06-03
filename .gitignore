@@ -1,0 +1,46 @@
+# Maven
+backend/target/
+*.class
+*.jar
+*.war
+*.ear
+*.log
+
+# Spring Boot
+backend/src/main/resources/application-prod.yml
+*.env
+!.env.example
+
+# Docker
+docker/.env
+
+# Terraform
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.backup
+terraform/*.tfvars
+!terraform/terraform.tfvars.example
+terraform/.terraform.lock.hcl
+terraform/plan.tfplan
+
+# Ansible
+ansible/*.retry
+ansible/group_vars/**/vault.yml
+ansible/host_vars/**/vault.yml
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+
+# Keys
+*.pem
+*.key
+*.jks
+*.p12

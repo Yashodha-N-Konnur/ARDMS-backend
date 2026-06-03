@@ -1,0 +1,27 @@
+---
+# =====================================================
+# ARDMS - Common Ansible Variables
+# =====================================================
+
+# Java
+java_version: "17"
+java_package: "java-17-amazon-corretto"
+
+# Docker
+docker_compose_version: "2.23.0"
+
+# Application
+ardms_docker_image: "ardms/ardms-backend"
+ardms_app_dir: "/opt/ardms"
+ardms_logs_dir: "/opt/ardms/logs"
+ardms_config_dir: "/opt/ardms/config"
+ardms_app_port: 8080
+
+# Database (override in vault or host_vars for production)
+db_url: "jdbc:mysql://{{ db_host }}:3306/{{ db_name }}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC"
+db_name: "ardms_db"
+
+# Secrets (store these in ansible-vault!)
+# db_username: encrypted
+# db_password: encrypted
+# jwt_secret: encrypted

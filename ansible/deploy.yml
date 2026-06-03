@@ -1,0 +1,64 @@
+---
+# =====================================================
+# ARDMS - Deployment-only Playbook
+# Use this for updates without full setup
+# =====================================================
+- name: Deploy ARDMS Application
+  hosts: ardms_servers
+  become: yes
+  gather_facts: yes
+  tags: [deploy]
+
+  vars:
+    app_image_tag: "{{ lookup('env', 'APP_IMAGE_TAG') | default('latest') }}"
+
+  tasks:
+    - name: Pull latest Docker image
+      docker_image:
+        name: "{{ ardms_docker_image }}:{{ app_image_tag }}"
+        source: pull
+        force_source: yes
+
+    - name: Stop existing container
+      docker_container:
+        name: ardms-backend
+        state: stopped
+      ignore_errors: yes
+
+    - name: Remove existing container
+      docker_container:
+        name: ardms-backend
+        state: absent
+      ignore_errors: yes
+
+    - name: Start new container
+      docker_container:
+        name: ardms-backend
+        image: "{{ ardms_docker_image }}:{{ app_image_tag }}"
+        state: started
+        restart_policy: unless-stopped
+        ports:
+          - "8080:8080"
+        env:
+          SPRING_PROFILES_ACTIVE: prod
+          DB_URL: "{{ db_url }}"
+          DB_USERNAME: "{{ db_username }}"
+          DB_PASSWORD: "{{ db_password }}"
+          JWT_SECRET: "{{ jwt_secret }}"
+          LOG_PATH: /app/logs
+        volumes:
+          - /opt/ardms/logs:/app/logs
+
+    - name: Wait for application to start
+      uri:
+        url: "http://localhost:8080/api/actuator/health"
+        method: GET
+        status_code: 200
+      register: health_result
+      retries: 15
+      delay: 10
+      until: health_result.status == 200
+
+    - name: Deployment complete
+      debug:
+        msg: "ARDMS {{ app_image_tag }} deployed successfully"

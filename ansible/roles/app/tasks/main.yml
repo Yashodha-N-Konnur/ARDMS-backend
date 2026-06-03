@@ -1,0 +1,39 @@
+---
+- name: Create application environment file
+  template:
+    src: app.env.j2
+    dest: "{{ ardms_app_dir }}/.env"
+    owner: ec2-user
+    group: ec2-user
+    mode: '0600'
+
+- name: Copy docker-compose file
+  template:
+    src: docker-compose.yml.j2
+    dest: "{{ ardms_app_dir }}/docker-compose.yml"
+    owner: ec2-user
+    group: ec2-user
+    mode: '0644'
+
+- name: Pull ARDMS Docker image
+  docker_image:
+    name: "{{ ardms_docker_image }}:{{ app_image_tag | default('latest') }}"
+    source: pull
+  become_user: ec2-user
+
+- name: Start ARDMS container via Docker Compose
+  docker_compose:
+    project_src: "{{ ardms_app_dir }}"
+    state: present
+    pull: yes
+  become_user: ec2-user
+
+- name: Wait for ARDMS to start
+  uri:
+    url: "http://localhost:{{ ardms_app_port }}/api/actuator/health"
+    method: GET
+    status_code: 200
+  register: health_result
+  retries: 15
+  delay: 15
+  until: health_result.status == 200

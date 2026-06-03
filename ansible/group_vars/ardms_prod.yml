@@ -1,0 +1,3 @@
+---
+spring_profile: "prod"
+ardms_docker_image: "ardms/ardms-backend"

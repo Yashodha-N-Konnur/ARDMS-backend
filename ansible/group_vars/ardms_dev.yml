@@ -1,0 +1,4 @@
+---
+db_host: "localhost"
+spring_profile: "dev"
+ardms_docker_image: "ardms/ardms-backend"

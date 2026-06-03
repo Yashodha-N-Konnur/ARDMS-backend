@@ -1,0 +1,316 @@
+// =====================================================
+// ARDMS - Jenkins CI/CD Pipeline
+// Stages: Checkout → Build → Test → Docker → Deploy
+// =====================================================
+
+pipeline {
+    agent any
+
+    environment {
+        APP_NAME        = 'ardms-backend'
+        DOCKER_IMAGE    = 'ardms/ardms-backend'
+        DOCKER_REGISTRY = credentials('docker-registry-url')
+        DOCKER_CREDS    = credentials('docker-registry-credentials')
+        DB_CREDS        = credentials('ardms-db-credentials')
+        JWT_SECRET      = credentials('ardms-jwt-secret')
+        SONAR_TOKEN     = credentials('sonarqube-token')
+        ANSIBLE_VAULT   = credentials('ansible-vault-password')
+        MAVEN_OPTS      = '-Dmaven.repo.local=/var/jenkins_home/.m2/repository'
+    }
+
+    parameters {
+        choice(
+            name: 'DEPLOY_ENV',
+            choices: ['dev', 'staging', 'prod'],
+            description: 'Target deployment environment'
+        )
+        string(
+            name: 'IMAGE_TAG',
+            defaultValue: '',
+            description: 'Docker image tag (leave blank to use BUILD_NUMBER)'
+        )
+        booleanParam(
+            name: 'SKIP_TESTS',
+            defaultValue: false,
+            description: 'Skip unit tests (not recommended for production)'
+        )
+        booleanParam(
+            name: 'RUN_SONAR',
+            defaultValue: true,
+            description: 'Run SonarQube analysis'
+        )
+    }
+
+    options {
+        buildDiscarder(logRotator(numToKeepStr: '20'))
+        timeout(time: 45, unit: 'MINUTES')
+        timestamps()
+        disableConcurrentBuilds()
+        ansiColor('xterm')
+    }
+
+    stages {
+
+        stage('🔍 Checkout') {
+            steps {
+                script {
+                    env.IMAGE_TAG = params.IMAGE_TAG ?: "${env.BUILD_NUMBER}"
+                    env.FULL_IMAGE = "${DOCKER_IMAGE}:${env.IMAGE_TAG}"
+                    env.GIT_COMMIT_SHORT = sh(
+                        script: "git rev-parse --short HEAD",
+                        returnStdout: true
+                    ).trim()
+                }
+                echo "Building: ${env.FULL_IMAGE}"
+                echo "Git Commit: ${env.GIT_COMMIT_SHORT}"
+                echo "Deploy to: ${params.DEPLOY_ENV}"
+            }
+        }
+
+        stage('📦 Maven Build') {
+            steps {
+                dir('backend') {
+                    sh """
+                        mvn clean compile \
+                            -B \
+                            -Dmaven.test.skip=${params.SKIP_TESTS} \
+                            ${MAVEN_OPTS}
+                    """
+                }
+            }
+        }
+
+        stage('🧪 Unit Tests') {
+            when {
+                expression { !params.SKIP_TESTS }
+            }
+            steps {
+                dir('backend') {
+                    sh """
+                        mvn test \
+                            -B \
+                            -Dspring.profiles.active=test \
+                            ${MAVEN_OPTS}
+                    """
+                }
+            }
+            post {
+                always {
+                    junit 'backend/target/surefire-reports/*.xml'
+                    publishHTML(target: [
+                        reportDir: 'backend/target/site/jacoco',
+                        reportFiles: 'index.html',
+                        reportName: 'JaCoCo Coverage Report'
+                    ])
+                }
+            }
+        }
+
+        stage('📊 SonarQube Analysis') {
+            when {
+                expression { params.RUN_SONAR && !params.SKIP_TESTS }
+            }
+            steps {
+                withSonarQubeEnv('SonarQube') {
+                    dir('backend') {
+                        sh """
+                            mvn sonar:sonar \
+                                -Dsonar.projectKey=ardms-backend \
+                                -Dsonar.projectName='ARDMS Backend' \
+                                -Dsonar.token=${SONAR_TOKEN} \
+                                -B ${MAVEN_OPTS}
+                        """
+                    }
+                }
+            }
+        }
+
+        stage('📋 Quality Gate') {
+            when {
+                expression { params.RUN_SONAR && !params.SKIP_TESTS }
+            }
+            steps {
+                timeout(time: 5, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: false
+                }
+            }
+        }
+
+        stage('📦 Package JAR') {
+            steps {
+                dir('backend') {
+                    sh """
+                        mvn package \
+                            -DskipTests \
+                            -B \
+                            ${MAVEN_OPTS}
+                    """
+                }
+                archiveArtifacts artifacts: 'backend/target/*.jar', fingerprint: true
+            }
+        }
+
+        stage('🐳 Docker Build') {
+            steps {
+                dir('backend') {
+                    sh """
+                        docker build \
+                            -t ${env.FULL_IMAGE} \
+                            -t ${DOCKER_IMAGE}:latest \
+                            --build-arg BUILD_DATE=\$(date -u +'%Y-%m-%dT%H:%M:%SZ') \
+                            --build-arg GIT_COMMIT=${env.GIT_COMMIT_SHORT} \
+                            --build-arg VERSION=${env.IMAGE_TAG} \
+                            --no-cache \
+                            .
+                    """
+                }
+            }
+        }
+
+        stage('🔒 Docker Security Scan') {
+            steps {
+                sh """
+                    docker run --rm \
+                        -v /var/run/docker.sock:/var/run/docker.sock \
+                        aquasec/trivy:latest image \
+                        --exit-code 0 \
+                        --severity HIGH,CRITICAL \
+                        --format table \
+                        ${env.FULL_IMAGE}
+                """
+            }
+        }
+
+        stage('📤 Docker Push') {
+            steps {
+                sh """
+                    echo "${DOCKER_CREDS_PSW}" | docker login \
+                        ${DOCKER_REGISTRY} \
+                        -u "${DOCKER_CREDS_USR}" \
+                        --password-stdin
+
+                    docker push ${env.FULL_IMAGE}
+                    docker push ${DOCKER_IMAGE}:latest
+
+                    docker logout ${DOCKER_REGISTRY}
+                """
+            }
+        }
+
+        stage('🚀 Deploy to Dev') {
+            when {
+                expression { params.DEPLOY_ENV == 'dev' }
+            }
+            steps {
+                withCredentials([file(credentialsId: 'ansible-vault-password', variable: 'VAULT_FILE')]) {
+                    sh """
+                        cd ansible
+                        ansible-playbook deploy.yml \
+                            -i inventory/hosts.ini \
+                            -l ardms_dev \
+                            --vault-password-file ${VAULT_FILE} \
+                            -e "app_image_tag=${env.IMAGE_TAG}" \
+                            -e "ardms_docker_image=${DOCKER_IMAGE}" \
+                            -v
+                    """
+                }
+            }
+        }
+
+        stage('🚀 Deploy to Staging') {
+            when {
+                expression { params.DEPLOY_ENV == 'staging' }
+            }
+            steps {
+                withCredentials([file(credentialsId: 'ansible-vault-password', variable: 'VAULT_FILE')]) {
+                    sh """
+                        cd ansible
+                        ansible-playbook deploy.yml \
+                            -i inventory/hosts.ini \
+                            -l ardms_staging \
+                            --vault-password-file ${VAULT_FILE} \
+                            -e "app_image_tag=${env.IMAGE_TAG}" \
+                            -e "ardms_docker_image=${DOCKER_IMAGE}" \
+                            -v
+                    """
+                }
+            }
+        }
+
+        stage('✅ Staging Smoke Test') {
+            when {
+                expression { params.DEPLOY_ENV == 'staging' }
+            }
+            steps {
+                sh """
+                    # Wait for app startup
+                    sleep 30
+
+                    # Health check
+                    curl -f http://\${STAGING_HOST}:8080/api/actuator/health || exit 1
+
+                    # Login smoke test
+                    RESPONSE=\$(curl -s -X POST http://\${STAGING_HOST}:8080/api/auth/login \
+                        -H 'Content-Type: application/json' \
+                        -d '{"usernameOrEmail":"admin","password":"Admin@1234"}')
+
+                    echo "Login response: \$RESPONSE"
+                    echo "\$RESPONSE" | grep -q '"success":true' || exit 1
+
+                    echo "Staging smoke tests passed!"
+                """
+            }
+        }
+
+        stage('🔐 Production Approval') {
+            when {
+                expression { params.DEPLOY_ENV == 'prod' }
+            }
+            steps {
+                input(
+                    message: "Deploy ${env.IMAGE_TAG} to PRODUCTION?",
+                    ok: 'Deploy to Production',
+                    submitterParameter: 'APPROVED_BY'
+                )
+                echo "Production deployment approved by: ${env.APPROVED_BY}"
+            }
+        }
+
+        stage('🚀 Deploy to Production') {
+            when {
+                expression { params.DEPLOY_ENV == 'prod' }
+            }
+            steps {
+                withCredentials([file(credentialsId: 'ansible-vault-password', variable: 'VAULT_FILE')]) {
+                    sh """
+                        cd ansible
+                        ansible-playbook deploy.yml \
+                            -i inventory/hosts.ini \
+                            -l ardms_prod \
+                            --vault-password-file ${VAULT_FILE} \
+                            -e "app_image_tag=${env.IMAGE_TAG}" \
+                            -e "ardms_docker_image=${DOCKER_IMAGE}" \
+                            -v
+                    """
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            script {
+                def status = currentBuild.currentResult
+                def icon = status == 'SUCCESS' ? '✅' : status == 'FAILURE' ? '❌' : '⚠️'
+                echo "${icon} Pipeline ${status}: ${env.JOB_NAME} #${env.BUILD_NUMBER}"
+            }
+            cleanWs()
+        }
+        success {
+            echo "🎉 Build ${env.IMAGE_TAG} deployed to ${params.DEPLOY_ENV} successfully!"
+        }
+        failure {
+            echo "💥 Pipeline failed! Check logs at ${env.BUILD_URL}"
+        }
+    }
+}

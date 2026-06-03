@@ -1,0 +1,28 @@
+---
+- name: Check if Java is installed
+  command: java -version
+  register: java_check
+  ignore_errors: yes
+  changed_when: false
+
+- name: Install Amazon Corretto JDK 17
+  package:
+    name: "{{ java_package }}"
+    state: present
+  when: java_check.rc != 0
+
+- name: Verify Java installation
+  command: java -version
+  register: java_version_check
+  changed_when: false
+
+- name: Print Java version
+  debug:
+    msg: "Java installed: {{ java_version_check.stderr }}"
+
+- name: Set JAVA_HOME in /etc/environment
+  lineinfile:
+    path: /etc/environment
+    regexp: '^JAVA_HOME='
+    line: 'JAVA_HOME=/usr/lib/jvm/java-17-amazon-corretto'
+    create: yes
