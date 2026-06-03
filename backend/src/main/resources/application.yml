@@ -53,5 +53,10 @@ jwt:
   expiration: ${JWT_EXPIRATION:86400000}
   refresh-expiration: ${JWT_REFRESH_EXPIRATION:604800000}
 
+app:
+  name: ARDMS
+  version: 1.0.0
+  description: Automated Release and Deployment Management System
+
 logging:
   config: classpath:log4j2.xml
